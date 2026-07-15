@@ -2,6 +2,7 @@ const Desklet = imports.ui.desklet;
 const Settings = imports.ui.settings;
 const St = imports.gi.St;
 const GLib = imports.gi.GLib;
+const Gio = imports.gi.Gio;
 const Soup = imports.gi.Soup;
 const Mainloop = imports.mainloop;
 const ByteArray = imports.byteArray;
@@ -61,6 +62,8 @@ ClaudeUsageDesklet.prototype = {
         this._http.user_agent = "claude-usage-desklet/1.1";
 
         this._timerId = 0;
+        this._settingsReloadId = 0;
+        this._settingsMonitor = null;
         this._limits = null;
         this._lastUpdated = null;
         this._error = null;
@@ -76,6 +79,7 @@ ClaudeUsageDesklet.prototype = {
             return false;
         });
 
+        this._watchSettingsFile();
         this._render();
         this._refresh();
         this._startTimer();
@@ -84,10 +88,51 @@ ClaudeUsageDesklet.prototype = {
     on_desklet_removed: function() {
         this._removed = true;
         this._stopTimer();
+        if (this._settingsReloadId) {
+            Mainloop.source_remove(this._settingsReloadId);
+            this._settingsReloadId = 0;
+        }
+        if (this._settingsMonitor) {
+            this._settingsMonitor.cancel();
+            this._settingsMonitor = null;
+        }
         if (this._http && this._http.abort)
             this._http.abort();
         if (this.settings)
             this.settings.finalize();
+    },
+
+    // Cinnamon доставляє зміни налаштувань через DBus, але його діалог іноді
+    // губить це сповіщення (запис у файл є, а працюючий десклет лишається
+    // зі старими значеннями до перезавантаження). Стежимо за файлом самі й
+    // застосовуємо зміни надійно.
+    _watchSettingsFile: function() {
+        if (!this.settings || !this.settings.file)
+            return;
+        try {
+            this._settingsMonitor = this.settings.file.monitor_file(Gio.FileMonitorFlags.NONE, null);
+            this._settingsMonitor.connect("changed", (mon, file, other, event) => {
+                if (this._removed) return;
+                // Реагуємо лише після завершення запису, з дебаунсом.
+                if (event !== Gio.FileMonitorEvent.CHANGES_DONE_HINT
+                    && event !== Gio.FileMonitorEvent.CREATED)
+                    return;
+                if (this._settingsReloadId)
+                    Mainloop.source_remove(this._settingsReloadId);
+                this._settingsReloadId = Mainloop.timeout_add(250, () => {
+                    this._settingsReloadId = 0;
+                    if (this._removed) return false;
+                    try {
+                        this.settings._checkSettings();
+                    } catch (e) {
+                        global.logWarning("[" + UUID + "] settings reload failed: " + e);
+                    }
+                    return false;
+                });
+            });
+        } catch (e) {
+            global.logWarning("[" + UUID + "] cannot watch settings file: " + e);
+        }
     },
 
     _onSettingsChanged: function() {

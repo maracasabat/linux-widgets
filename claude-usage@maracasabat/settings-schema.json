@@ -1,0 +1,178 @@
+{
+    "layout": {
+        "type": "layout",
+        "pages": ["page-general", "page-appearance", "page-colors"],
+        "page-general": {
+            "type": "page",
+            "title": "Загальні",
+            "sections": ["sec-update", "sec-source"]
+        },
+        "page-appearance": {
+            "type": "page",
+            "title": "Вигляд",
+            "sections": ["sec-size", "sec-elements", "sec-bg"]
+        },
+        "page-colors": {
+            "type": "page",
+            "title": "Кольори",
+            "sections": ["sec-text-colors", "sec-bar-colors"]
+        },
+        "sec-update": {
+            "type": "section",
+            "title": "Оновлення",
+            "keys": ["refresh-minutes"]
+        },
+        "sec-source": {
+            "type": "section",
+            "title": "Джерело даних",
+            "keys": ["creds-path"]
+        },
+        "sec-size": {
+            "type": "section",
+            "title": "Розміри",
+            "keys": ["bar-width", "font-size", "bar-height", "border-radius"]
+        },
+        "sec-elements": {
+            "type": "section",
+            "title": "Елементи",
+            "keys": ["show-header", "show-updated", "show-reset"]
+        },
+        "sec-bg": {
+            "type": "section",
+            "title": "Фон",
+            "keys": ["bg-color", "bg-opacity"]
+        },
+        "sec-text-colors": {
+            "type": "section",
+            "title": "Текст",
+            "keys": ["title-color", "text-color"]
+        },
+        "sec-bar-colors": {
+            "type": "section",
+            "title": "Індикатори використання",
+            "keys": ["color-ok", "color-warn", "color-crit", "warn-threshold", "crit-threshold"]
+        }
+    },
+    "refresh-minutes": {
+        "type": "spinbutton",
+        "default": 5,
+        "min": 1,
+        "max": 120,
+        "step": 1,
+        "units": "хв",
+        "description": "Інтервал оновлення"
+    },
+    "creds-path": {
+        "type": "entry",
+        "default": "~/.claude/.credentials.json",
+        "description": "Шлях до credentials.json",
+        "tooltip": "Можна перевизначити змінними середовища CLAUDE_CREDS_PATH або CLAUDE_OAUTH_TOKEN (див. README)"
+    },
+    "bar-width": {
+        "type": "spinbutton",
+        "default": 260,
+        "min": 160,
+        "max": 600,
+        "step": 10,
+        "units": "px",
+        "description": "Ширина віджета"
+    },
+    "font-size": {
+        "type": "spinbutton",
+        "default": 10,
+        "min": 7,
+        "max": 24,
+        "step": 1,
+        "units": "pt",
+        "description": "Розмір шрифту"
+    },
+    "bar-height": {
+        "type": "spinbutton",
+        "default": 8,
+        "min": 4,
+        "max": 24,
+        "step": 1,
+        "units": "px",
+        "description": "Висота прогрес-барів"
+    },
+    "border-radius": {
+        "type": "spinbutton",
+        "default": 14,
+        "min": 0,
+        "max": 40,
+        "step": 1,
+        "units": "px",
+        "description": "Заокруглення кутів"
+    },
+    "show-header": {
+        "type": "checkbox",
+        "default": true,
+        "description": "Показувати заголовок"
+    },
+    "show-updated": {
+        "type": "checkbox",
+        "default": true,
+        "description": "Показувати час останнього оновлення"
+    },
+    "show-reset": {
+        "type": "checkbox",
+        "default": true,
+        "description": "Показувати час скидання лімітів"
+    },
+    "bg-color": {
+        "type": "colorchooser",
+        "default": "rgb(30,28,26)",
+        "description": "Колір фону"
+    },
+    "bg-opacity": {
+        "type": "scale",
+        "default": 0.85,
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.05,
+        "description": "Непрозорість фону"
+    },
+    "title-color": {
+        "type": "colorchooser",
+        "default": "rgb(217,119,87)",
+        "description": "Колір заголовка"
+    },
+    "text-color": {
+        "type": "colorchooser",
+        "default": "rgb(232,230,227)",
+        "description": "Колір тексту"
+    },
+    "color-ok": {
+        "type": "colorchooser",
+        "default": "rgb(105,179,108)",
+        "description": "Колір за низького використання"
+    },
+    "color-warn": {
+        "type": "colorchooser",
+        "default": "rgb(240,160,75)",
+        "description": "Колір попередження"
+    },
+    "color-crit": {
+        "type": "colorchooser",
+        "default": "rgb(229,72,77)",
+        "description": "Критичний колір"
+    },
+    "warn-threshold": {
+        "type": "spinbutton",
+        "default": 60,
+        "min": 1,
+        "max": 99,
+        "step": 1,
+        "units": "%",
+        "description": "Поріг попередження"
+    },
+    "crit-threshold": {
+        "type": "spinbutton",
+        "default": 85,
+        "min": 1,
+        "max": 100,
+        "step": 1,
+        "units": "%",
+        "description": "Критичний поріг"
+    }
+}

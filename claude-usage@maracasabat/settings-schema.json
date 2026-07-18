@@ -25,7 +25,7 @@
         "sec-source": {
             "type": "section",
             "title": "Джерело даних",
-            "keys": ["creds-path"]
+            "keys": ["source-mode", "ssh-target", "remote-command", "creds-path"]
         },
         "sec-size": {
             "type": "section",
@@ -62,10 +62,35 @@
         "units": "хв",
         "description": "Інтервал оновлення"
     },
+    "source-mode": {
+        "type": "combobox",
+        "default": "local",
+        "description": "Джерело даних",
+        "options": {
+            "Локально (цей комп'ютер)": "local",
+            "Віддалено через SSH": "ssh"
+        },
+        "tooltip": "У режимі SSH запит виконується на віддаленій машині — токен її не залишає, назад приходить лише статистика."
+    },
+    "ssh-target": {
+        "type": "entry",
+        "default": "",
+        "description": "SSH-адреса (user@host)",
+        "dependency": "source-mode=ssh",
+        "tooltip": "Наприклад, ivan@dev-server. Потрібен налаштований вхід за ключем (BatchMode)."
+    },
+    "remote-command": {
+        "type": "entry",
+        "default": "",
+        "description": "Команда на віддаленій машині (необов'язково)",
+        "dependency": "source-mode=ssh",
+        "tooltip": "Порожньо = вбудована команда (потрібен python3 на сервері). Має вивести JSON використання у stdout."
+    },
     "creds-path": {
         "type": "entry",
         "default": "~/.claude/.credentials.json",
         "description": "Шлях до credentials.json",
+        "dependency": "source-mode=local",
         "tooltip": "Можна перевизначити змінними середовища CLAUDE_CREDS_PATH або CLAUDE_OAUTH_TOKEN (див. README)"
     },
     "bar-width": {

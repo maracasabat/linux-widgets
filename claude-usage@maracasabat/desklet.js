@@ -18,6 +18,18 @@ const ENV_FILE = GLib.get_home_dir() + "/.config/claude-usage-desklet/.env";
 const DEFAULT_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const DEFAULT_CREDS_PATH = "~/.claude/.credentials.json";
 
+// Команда, яку десклет виконує на віддаленій машині в режимі SSH. Токен
+// читається і запит до API робиться ПРЯМО ТАМ — назад повертається лише JSON
+// із використанням. Сам токен ніколи не залишає віддалену машину.
+const DEFAULT_REMOTE_CMD =
+    "python3 -c \"import json,os,sys,urllib.request as u; " +
+    "d=json.load(open(os.path.expanduser('~/.claude/.credentials.json'))); " +
+    "t=d['claudeAiOauth']['accessToken']; " +
+    "sys.stdout.write(u.urlopen(u.Request('https://api.anthropic.com/api/oauth/usage', " +
+    "headers={'Authorization':'Bearer '+t,'anthropic-beta':'oauth-2025-04-20'," +
+    "'Content-Type':'application/json'}), timeout=15).read().decode())\"";
+const SSH_TIMEOUT_SEC = 30;
+
 function main(metadata, deskletId) {
     return new ClaudeUsageDesklet(metadata, deskletId);
 }
@@ -34,36 +46,46 @@ ClaudeUsageDesklet.prototype = {
         this.setHeader("Claude — ліміти");
 
         this.settings = new Settings.DeskletSettings(this, UUID, deskletId);
-        const bind = (key, prop) => this.settings.bind(key, prop, () => this._onSettingsChanged());
+        // Три категорії реакції: перезапуск таймера, повторний запит даних
+        // (джерело змінилось), просто перемалювати (вигляд/кольори).
+        const bindTimer = (key, prop) => this.settings.bind(key, prop, () => this._onTimerSettingChanged());
+        const bindSource = (key, prop) => this.settings.bind(key, prop, () => this._onSourceSettingChanged());
+        const bindDisplay = (key, prop) => this.settings.bind(key, prop, () => this._render());
         // Загальні
-        bind("refresh-minutes", "refreshMinutes");
-        bind("creds-path", "credsPath");
+        bindTimer("refresh-minutes", "refreshMinutes");
+        // Джерело даних
+        bindSource("source-mode", "sourceMode");
+        bindSource("ssh-target", "sshTarget");
+        bindSource("remote-command", "remoteCommand");
+        bindSource("creds-path", "credsPath");
         // Вигляд
-        bind("bar-width", "barWidth");
-        bind("font-size", "fontSize");
-        bind("bar-height", "barHeight");
-        bind("border-radius", "borderRadius");
-        bind("show-header", "showHeader");
-        bind("show-updated", "showUpdated");
-        bind("show-reset", "showReset");
-        bind("bg-color", "bgColor");
-        bind("bg-opacity", "bgOpacity");
+        bindDisplay("bar-width", "barWidth");
+        bindDisplay("font-size", "fontSize");
+        bindDisplay("bar-height", "barHeight");
+        bindDisplay("border-radius", "borderRadius");
+        bindDisplay("show-header", "showHeader");
+        bindDisplay("show-updated", "showUpdated");
+        bindDisplay("show-reset", "showReset");
+        bindDisplay("bg-color", "bgColor");
+        bindDisplay("bg-opacity", "bgOpacity");
         // Кольори
-        bind("title-color", "titleColor");
-        bind("text-color", "textColor");
-        bind("color-ok", "colorOk");
-        bind("color-warn", "colorWarn");
-        bind("color-crit", "colorCrit");
-        bind("warn-threshold", "warnThreshold");
-        bind("crit-threshold", "critThreshold");
+        bindDisplay("title-color", "titleColor");
+        bindDisplay("text-color", "textColor");
+        bindDisplay("color-ok", "colorOk");
+        bindDisplay("color-warn", "colorWarn");
+        bindDisplay("color-crit", "colorCrit");
+        bindDisplay("warn-threshold", "warnThreshold");
+        bindDisplay("crit-threshold", "critThreshold");
 
         this._http = (Soup.MAJOR_VERSION === 2) ? new Soup.SessionAsync() : new Soup.Session();
         this._http.timeout = 15;
-        this._http.user_agent = "claude-usage-desklet/1.1";
+        this._http.user_agent = "claude-usage-desklet/1.2";
 
         this._timerId = 0;
         this._settingsReloadId = 0;
         this._settingsMonitor = null;
+        this._sshProc = null;
+        this._sshKillId = 0;
         this._limits = null;
         this._lastUpdated = null;
         this._error = null;
@@ -96,10 +118,20 @@ ClaudeUsageDesklet.prototype = {
             this._settingsMonitor.cancel();
             this._settingsMonitor = null;
         }
+        this._cleanupSsh();
         if (this._http && this._http.abort)
             this._http.abort();
         if (this.settings)
             this.settings.finalize();
+    },
+
+    _onTimerSettingChanged: function() {
+        this._startTimer();
+    },
+
+    _onSourceSettingChanged: function() {
+        this._render();
+        this._refresh();
     },
 
     // Cinnamon доставляє зміни налаштувань через DBus, але його діалог іноді
@@ -133,11 +165,6 @@ ClaudeUsageDesklet.prototype = {
         } catch (e) {
             global.logWarning("[" + UUID + "] cannot watch settings file: " + e);
         }
-    },
-
-    _onSettingsChanged: function() {
-        this._startTimer();
-        this._render();
     },
 
     _startTimer: function() {
@@ -227,6 +254,82 @@ ClaudeUsageDesklet.prototype = {
     // ---- Запит до API ----------------------------------------------------
 
     _refresh: function() {
+        if ((this.sourceMode || "local") === "ssh")
+            this._refreshViaSsh();
+        else
+            this._refreshLocal();
+    },
+
+    // Режим SSH: увесь запит (читання токена + виклик API) виконується на
+    // віддаленій машині. Назад приходить лише JSON — токен не залишає сервер.
+    _cleanupSsh: function() {
+        if (this._sshKillId) {
+            Mainloop.source_remove(this._sshKillId);
+            this._sshKillId = 0;
+        }
+        if (this._sshProc) {
+            try { this._sshProc.force_exit(); } catch (e) {}
+            this._sshProc = null;
+        }
+    },
+
+    _refreshViaSsh: function() {
+        const target = (this.sshTarget || "").trim();
+        if (!target) {
+            this._error = "Вкажіть SSH-адресу (user@host) у налаштуваннях.";
+            this._render();
+            return;
+        }
+        const remoteCmd = (this.remoteCommand && this.remoteCommand.trim()) || DEFAULT_REMOTE_CMD;
+        const argv = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", target, remoteCmd];
+
+        this._cleanupSsh();
+        let proc;
+        try {
+            proc = Gio.Subprocess.new(argv,
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
+        } catch (e) {
+            this._error = "Не вдалося запустити ssh: " + e.message;
+            this._render();
+            return;
+        }
+        this._sshProc = proc;
+        // Захист від зависання: примусово вбити процес за таймаутом.
+        this._sshKillId = Mainloop.timeout_add_seconds(SSH_TIMEOUT_SEC, () => {
+            this._sshKillId = 0;
+            if (this._sshProc) {
+                try { this._sshProc.force_exit(); } catch (e) {}
+            }
+            return false;
+        });
+
+        proc.communicate_utf8_async(null, null, (p, res) => {
+            if (this._sshKillId) {
+                Mainloop.source_remove(this._sshKillId);
+                this._sshKillId = 0;
+            }
+            this._sshProc = null;
+            if (this._removed) return;
+
+            let ok, stdout, stderr;
+            try {
+                [ok, stdout, stderr] = p.communicate_utf8_finish(res);
+            } catch (e) {
+                this._error = "Помилка SSH: " + e.message;
+                this._render();
+                return;
+            }
+            if (p.get_exit_status() !== 0) {
+                const tail = (stderr || "").trim().split("\n").filter(s => s.trim()).pop();
+                this._error = "SSH: " + (tail || ("код " + p.get_exit_status()));
+                this._render();
+                return;
+            }
+            this._onResponse(stdout);
+        });
+    },
+
+    _refreshLocal: function() {
         const auth = this._resolveAuth();
         if (auth.error) {
             this._error = auth.error;

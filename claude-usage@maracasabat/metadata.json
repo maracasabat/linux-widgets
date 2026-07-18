@@ -2,7 +2,7 @@
     "uuid": "claude-usage@maracasabat",
     "name": "Claude Usage Limits",
     "description": "Показує використання лімітів Claude (сесія 5 год та тижневі) на робочому столі",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "max-instances": 1,
     "prevent-decorations": true
 }

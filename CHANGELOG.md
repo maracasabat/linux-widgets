@@ -3,6 +3,15 @@
 Формат відповідає [Keep a Changelog](https://keepachangelog.com/uk/1.1.0/),
 версіонування — [SemVer](https://semver.org/lang/uk/).
 
+## [1.2.1] — 2026-07-18
+
+### Додано
+- [server/claude-usage-report](server/claude-usage-report) — готовий скрипт для
+  віддаленої машини, який використовується як forced command обмеженого ключа
+- README: покрокова інструкція захищеного ключа (окремий ключ + `restrict` +
+  forced command + окремий Host-alias), щоб ключ віджета міг лише отримувати
+  статистику й не давав шелу
+
 ## [1.2.0] — 2026-07-18
 
 ### Додано

@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+# Виводить JSON використання лімітів Claude для локального акаунта.
+#
+# Призначений для запуску на ВІДДАЛЕНІЙ машині як forced command ключа
+# десклета Claude Usage. Ключ, обмежений цим скриптом у authorized_keys,
+# не дає нічого, крім цієї статистики (без шелу, без проброски портів).
+#
+# Встановлення на сервері:
+#   mkdir -p ~/.local/bin
+#   cp claude-usage-report ~/.local/bin/claude-usage-report
+#   chmod 700 ~/.local/bin/claude-usage-report
+#
+# Рядок у ~/.ssh/authorized_keys (одним рядком):
+#   restrict,command="/home/USER/.local/bin/claude-usage-report" ssh-ed25519 AAAA...ключ-віджета
+import json
+import os
+import sys
+import urllib.request as u
+
+creds = os.path.expanduser("~/.claude/.credentials.json")
+try:
+    with open(creds) as f:
+        token = json.load(f)["claudeAiOauth"]["accessToken"]
+except Exception as e:
+    sys.stderr.write("cannot read credentials: %s\n" % e)
+    sys.exit(1)
+
+req = u.Request(
+    "https://api.anthropic.com/api/oauth/usage",
+    headers={
+        "Authorization": "Bearer " + token,
+        "anthropic-beta": "oauth-2025-04-20",
+        "Content-Type": "application/json",
+    },
+)
+try:
+    sys.stdout.write(u.urlopen(req, timeout=15).read().decode())
+except Exception as e:
+    sys.stderr.write("usage request failed: %s\n" % e)
+    sys.exit(1)

@@ -77,17 +77,51 @@ cd linux-widgets
 
 ### Захищений ключ (рекомендовано)
 
-Щоб віджет міг робити на сервері *тільки* цей запит і нічого більше, створи
-окремий ключ і обмеж його в `~/.ssh/authorized_keys` на **віддаленій** машині
-через forced command:
+Щоб віджет міг робити на сервері *тільки* цей запит і нічого більше, використай
+**окремий** ключ (не свій основний!) і прив'яжи його до forced command. Твій
+звичайний доступ (шел, VS Code Remote-SSH) при цьому не зачіпається.
+
+**1. Окремий ключ на десктопі:**
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/claude_usage_widget_ed25519 -N "" -C claude-usage-widget
+```
+
+**2. Скрипт-репортер на сервері** ([server/claude-usage-report](server/claude-usage-report)):
+
+```bash
+scp server/claude-usage-report СЕРВЕР:/tmp/
+ssh СЕРВЕР 'mkdir -p ~/.local/bin && mv /tmp/claude-usage-report ~/.local/bin/ && chmod 700 ~/.local/bin/claude-usage-report'
+```
+
+**3. Обмежений запис у `~/.ssh/authorized_keys` на сервері** (одним рядком;
+`restrict` вимикає шел, pty та всі проброски):
 
 ```
-command="python3 -c \"import json,os,sys,urllib.request as u; d=json.load(open(os.path.expanduser('~/.claude/.credentials.json'))); t=d['claudeAiOauth']['accessToken']; sys.stdout.write(u.urlopen(u.Request('https://api.anthropic.com/api/oauth/usage', headers={'Authorization':'Bearer '+t,'anthropic-beta':'oauth-2025-04-20','Content-Type':'application/json'}), timeout=15).read().decode())\"",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ssh-ed25519 AAAA...ключ-віджета
+restrict,command="/home/USER/.local/bin/claude-usage-report" ssh-ed25519 AAAA...ключ-віджета
 ```
 
-Тоді навіть із цим ключем не можна отримати шелл — лише статистику
-використання. У налаштуваннях віджета вкажи цей ключ через звичайний
-`~/.ssh/config` (Host + IdentityFile) і адресу `user@host`.
+**4. Окремий Host-alias на десктопі** (`~/.ssh/config`) з цим ключем:
+
+```
+Host myserver-usage
+    HostName 1.2.3.4
+    User USER
+    IdentityFile ~/.ssh/claude_usage_widget_ed25519
+    IdentitiesOnly yes
+```
+
+**5. У налаштуваннях віджета** вкажи `myserver-usage` як SSH-адресу.
+
+Перевірка, що ключ обмежений (має повернути JSON, а не вміст файлу):
+
+```bash
+ssh myserver-usage 'cat /etc/passwd'   # → все одно лише статистика
+```
+
+> `IdentitiesOnly yes` обов'язковий — інакше ssh може запропонувати спершу твій
+> основний (необмежений) ключ. Якщо використовуєш мультиплексування, дай цьому
+> alias **окремий** `ControlPath`, щоб він не ділив з'єднання з інтерактивним.
 
 ## Конфігурація через змінні середовища
 
@@ -147,6 +181,7 @@ claude-usage@maracasabat/
 install.sh                 # встановлення + вмикання
 uninstall.sh               # вимикання + видалення
 .env.example               # приклад конфігурації через середовище
+server/claude-usage-report # скрипт для сервера (SSH-режим, захищений ключ)
 CHANGELOG.md               # історія змін
 ```
 
